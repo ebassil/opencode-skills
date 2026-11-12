@@ -1,0 +1,37 @@
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Node (plugins, scripts)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OpenCode: keep shared project config in .opencode/ (skills, commands, agents),
+# but ignore local overrides and generated cache
+opencode.local.jsonc
+.opencode/node_modules/
+.opencode/git/
+.opencode/log/
+.opencode/storage/
+.opencode/*.log
+
+# Python (helper scripts in skills)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
