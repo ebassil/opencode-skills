@@ -1,6 +1,7 @@
 ---
-name: GitHub via git credential cache
-description: Use BEFORE running any GitHub action — any mention of GitHub, any gh/git command touching a remote (issues, PRs, releases, push, clone), even if this skill has no specific workflow for it (then fall back to generic `git` or `gh` calls via scripts/gh.sh). Mandatory when the user asks to close an issue (e.g. "close issue #2", "close issue #2 in github") or to work on an issue (retrieve it from GitHub, then invoke the openspec-explore skill with its title and description). Also covers creating issues/enhancements (draft for approval first, then submit via scripts/gh.sh). Runs gh CLI commands authenticated by a PAT held in git's in-memory credential-cache daemon, with no gh login and no token on disk, on headless/SSH sessions or when gh reports missing authentication.
+name: github-git-credential
+description: Runs gh CLI commands for GitHub work — issues, PRs, releases, push, clone — authenticated by a PAT held only in git's in-memory credential-cache daemon, with no gh login and no token on disk. Use BEFORE any GitHub action or gh/git command touching a remote, on headless/SSH sessions, or when gh reports missing authentication. Required to close issues (always with a user-approved comment), to work on issues (retrieve it, then openspec-explore), and to create issues (draft for approval first).
+compatibility: Requires bash, git, and GitHub CLI (gh), with git's credential.helper 'cache' and the PAT seeded by the user in their own terminal. Steps mentioning the question tool or the openspec-explore skill apply where those exist; otherwise confirm with the user in chat and explore the issue directly.
 ---
 
 # GitHub via git credential cache
@@ -9,6 +10,9 @@ Authenticate `gh` with `GH_TOKEN` fetched per-command from git's built-in
 `credential.helper cache` daemon (RAM only; wiped by reboot, timeout, or
 `git credential-cache exit`). Never run `gh auth login`, never write any
 token to disk, never echo it.
+
+Plain `git push`/`fetch`/`clone`/`ls-remote` over HTTPS need no wrapper: git
+pulls the same PAT from the daemon automatically.
 
 ## Entry point for ALL GitHub actions
 
@@ -36,12 +40,16 @@ Explicit triggers — invoke this skill first, before trying other commands:
    ```bash
    scripts/gh.sh issue list -R owner/repo --limit 50
    scripts/gh.sh api rate_limit
-   GH_HOST=github.enterprise.example.com scripts/gh.sh pr list   # optional other host
+   GH_HOST=github.enterprise.example.com scripts/gh.sh pr list   # other host
    ```
 
-2. The script handles everything: helper config check, credential fetch with
-   `GIT_TERMINAL_PROMPT=0` (so it can never hang on a prompt), and passing
-   the token via `GH_TOKEN` only.
+   The script picks the token environment variable `gh` actually reads for
+   the host (`GH_TOKEN` for github.com / `*.ghe.com`, `GH_ENTERPRISE_TOKEN`
+   for Enterprise Server), so `GH_HOST` works without extra setup.
+
+2. The script handles everything: dependency and helper-config checks,
+   credential fetch with `GIT_TERMINAL_PROMPT=0` (so it can never hang on a
+   prompt), and passing the token to `gh` only.
 
 ## Creating an issue or enhancement (always draft first)
 
@@ -57,10 +65,11 @@ feature request**, do **not** submit immediately. Follow this loop:
    - Use Markdown. Keep it faithful to what the user said; fill obvious gaps
      but do not invent requirements.
 
-2. **Show the draft to the user** (title + body) and ask them to confirm using
-   the `question` tool. Offer at least: **Create as-is**, **Edit / add
-   corrections**, **Cancel**. If they provide corrections, revise and show the
-   updated draft again. Repeat until they accept.
+2. **Show the draft to the user** (title + body) and ask them to confirm,
+   using the `question` tool where one exists (otherwise ask directly in
+   chat). Offer at least: **Create as-is**, **Edit / add corrections**,
+   **Cancel**. If they provide corrections, revise and show the updated
+   draft again. Repeat until they accept.
 
 3. **Only after the user accepts the final version**, create it via the
    wrapper script:
@@ -87,9 +96,9 @@ then **always leave a comment before closing** via the wrapper script:
    (commit/PR/issue links, release, or "duplicate of #N" / "won't do" and
    the reason). Base it on what the user said and the work just done; keep
    it brief.
-2. **Show the draft to the user** and get confirmation with the `question`
-   tool (Post as-is / Edit / Cancel) before doing anything, unless they
-   already supplied the exact wording.
+2. **Show the draft to the user** and get confirmation (via the `question`
+   tool where available, otherwise in chat; Post as-is / Edit / Cancel)
+   before doing anything, unless they already supplied the exact wording.
 3. **Comment first, then close:**
 
    ```bash
@@ -116,9 +125,22 @@ issue #5"), follow this sequence:
 2. **Invoke the `openspec-explore` skill** (`/opsx-explore`), passing the
    issue's **title and description** as the topic to explore. Do not start
    implementing the issue directly; the exploration drives the rest of the
-   OpenSpec workflow.
+   OpenSpec workflow. If the `openspec-explore` skill is not available in
+   this environment, tell the user, then explore the issue with them
+   conversationally before implementing anything.
 
-## On failure (exit code 127)
+## On failure
+
+Check the wrapper script's exit code first — the recovery differs:
+
+- **Exit 2 (environment problem):** `git` or `gh` is not installed, or the
+  script was called without arguments. Relay the script's `ERROR` line to
+  the user and ask them to install the missing dependency. Seeding a
+  credential will not help; do not run the `git credential approve` steps.
+- **Exit 127 (credential problem):** helper not configured or cache empty.
+  See below.
+
+### Exit 127 recovery
 
 The script prints a complete `FIX` block. The agent **cannot prompt the user
 for a secret**, so:
@@ -146,7 +168,7 @@ for a secret**, so:
    (the socket lives at `$XDG_RUNTIME_DIR/git/credential.socket`; the daemon
    may be running in a session with a different value), whether the seeding
    `--timeout` elapsed (48 h from seeding, not from use), and
-   `git config --global --get-all credential.helper`.
+   `git config --get-all credential.helper`.
 
 ## Security rules
 
@@ -155,6 +177,8 @@ for a secret**, so:
 - Prefer a fine-grained PAT scoped to the target repo; the credential cache
   itself matches on protocol+host only (account-wide, not repo-scoped).
 - Do not run `gh auth setup-git` or `gh auth login` — both persist to disk.
+- Do not accept a disk-based helper (`store`) as a fallback; this skill uses
+  the in-memory `cache` daemon only.
 - If a command fails with HTTP 401, say the cached PAT may have expired or
   been revoked and give the user the seeding instructions again; do not try
   other authentication methods silently.
