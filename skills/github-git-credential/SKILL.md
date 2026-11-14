@@ -122,7 +122,7 @@ issue #5"), follow this sequence:
    scripts/gh.sh issue view 3 -R owner/repo --json title,body,comments,labels,state
    ```
 
-2. **Invoke the `openspec-explore` skill** (`/opsx-explore`), passing the
+2. **Invoke the `openspec-explore` skill**, passing the
    issue's **title and description** as the topic to explore. Do not start
    implementing the issue directly; the exploration drives the rest of the
    OpenSpec workflow. If the `openspec-explore` skill is not available in
